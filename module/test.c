@@ -15,6 +15,16 @@ struct test_ip_ioctl_request {
 #define TEST_IP_IOCTL _IOR(150, 2, struct test_ip_ioctl_request)
 
 int main() {
+	int sufd = open("/proc/enable_su", O_RDWR);
+	if(sufd < 0) {
+		perror("open(enable_su) = ");
+		return 1;
+	}
+
+	write(sufd, "0", 1);
+	write(sufd, "1", 1);
+
+
   int fd = open("/dev/hello", O_RDWR);
   if(fd < 0) {
     perror("failed to open");

