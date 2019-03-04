@@ -4,7 +4,7 @@ obj-m := hello_dev.o
 KDIR  ?=  /srv/nfs/debian/lib/modules/5.0.0-rc7TRN0038+/build
 PWD   := $(shell pwd)
 
-all: module test
+all: module test multicast6_recv
 
 module:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
