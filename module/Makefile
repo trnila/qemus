@@ -4,7 +4,8 @@ obj-m := hello_dev.o
 KDIR  ?=  /srv/nfs/debian/lib/modules/5.0.0-rc7TRN0038+/build
 PWD   := $(shell pwd)
 
-all: module test multicast6_recv
+PROGS=test multicast6_recv
+all: module $(PROGS)
 
 module:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
@@ -15,4 +16,4 @@ reinsert:
 
 clean:
 	$(MAKE) -C $(KDIR) M=$(PWD) clean
-	rm -f test
+	rm -f $(PROGS)

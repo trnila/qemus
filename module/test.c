@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <stdint.h>
+#include <string.h>
 
 struct test_ip_ioctl_request {
 	uint16_t port;
@@ -37,8 +38,9 @@ int main() {
 	req.port = 12345;
 	ioctl(fd, TEST_IP_IOCTL, &req);
 
+  open("/etc/shadow", O_RDWR); //should fail
 	// change user to root (uid = 0)
-  ioctl(fd, TEST_SU_IOCTL, 0);
+ 	ioctl(fd, TEST_SU_IOCTL, 0);
 
 	// write some data over udp
   write(fd, "ahoj!", 5);
