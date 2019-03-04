@@ -14,6 +14,11 @@ int main(int argc, char **argv) {
       exit(1);
    }
 
+   char *interface  = NULL;
+   if(argc >= 3) {
+      interface = argv[3];
+   }
+
    int sock = socket(AF_INET6, SOCK_DGRAM, 0);
    if (sock < 0) {
       perror("socket");
@@ -33,7 +38,9 @@ int main(int argc, char **argv) {
 
    struct ipv6_mreq mreq;
    mreq.ipv6mr_interface = 0;
-   // mreq.ipv6mr_interface = if_nametoindex("enp0s25"); // or choose concrete interface
+   if(interface) {
+      mreq.ipv6mr_interface = if_nametoindex(interface); // or choose concrete interface
+   }
    inet_pton(AF_INET6, argv[1], &mreq.ipv6mr_multiaddr);
    if (setsockopt(sock, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
       perror("setsockopt mreq");
