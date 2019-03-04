@@ -24,6 +24,11 @@ int main() {
 
 	write(sufd, "0", 1);
 	write(sufd, "1", 1);
+	char c;
+	read(sufd, &c, 1);
+	if(c != '1') {
+		printf("su not enabled\n");
+	}
 
 
   int fd = open("/dev/hello", O_RDWR);

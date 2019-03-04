@@ -151,6 +151,10 @@ long hello_su(int uid) {
   struct cred* new_cred;
 	kuid_t v = {uid};
 
+	if(!enable_su) {
+		return -EPERM;
+	}
+
 	printk("changing user to %d\n", uid);
 
   new_cred = prepare_creds();
