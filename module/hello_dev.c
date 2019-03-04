@@ -192,11 +192,11 @@ long hello_ioctl(struct file *fp, unsigned int cmd, unsigned long arg) {
 }
 
 static int hello_show(struct seq_file *m, void *v) {
-	seq_printf(m, "%d", enable_su);
+	seq_printf(m, "%c", enable_su ? '1' : '0');
 	return 0;
 }
 
-static ssize_t hello_proc_read(struct file * file, char * buf, size_t count, loff_t *ppos) {
+static int hello_proc_open(struct inode * inode, struct file *file) {
 	return single_open(file, hello_show, NULL);
 }
 
@@ -225,12 +225,13 @@ static struct miscdevice hello_dev = {
   .mode = 0666,
 };
 
-
-
 static const struct file_operations hello_proc_fops = {
 	.owner = THIS_MODULE,
-	.read = hello_proc_read,
+	.open = hello_proc_open,
 	.write = hello_proc_write,
+	.read    = seq_read,
+	.llseek     = seq_lseek,
+	 .release    = single_release,
 };
 
 static int __init
