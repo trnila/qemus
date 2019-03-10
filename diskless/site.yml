@@ -1,0 +1,199 @@
+- hosts: server
+  handlers:
+    - name: restart networking
+      service: name=networking state=restarted
+    - name: restart dhcp
+      service: name=isc-dhcp-server state=restarted
+    - name: restart nfs
+      command: "exportfs -rav"
+    - name: restart sshd
+      service: name=sshd state=restarted
+    - name: restart iptables
+      service: name=netfilter-persistent state=restarted
+  tasks:
+    - name: configure networking
+      copy:
+        dest: /etc/network/interfaces.d/network
+        content: |
+          allow-hotplug wan
+          auto wan
+          iface wan inet dhcp
+
+          allow-hotplug lan
+          auto lan
+          iface lan inet static
+            address 10.10.0.1
+            netmask 255.255.255.0
+      notify: restart networking
+
+    - name: enable ipv4 forwarding
+      sysctl:
+        name: net.ipv4.ip_forward
+        value: 1
+        sysctl_file: /etc/sysctl.d/50-ipv4_forward.conf
+
+    - name: install iptables-persistent
+      package:
+        name: iptables-persistent
+
+    - name: copy firewall
+      copy:
+        dest: /etc/iptables/rules.v4
+        content: |
+          *nat
+          :PREROUTING ACCEPT [3:302]
+          :INPUT ACCEPT [1:164]
+          :OUTPUT ACCEPT [0:0]
+          :POSTROUTING ACCEPT [2:138]
+          -A POSTROUTING -o wan -j MASQUERADE
+          COMMIT
+          *filter
+          :INPUT ACCEPT [306:42468]
+          :FORWARD ACCEPT [84:6696]
+          :OUTPUT ACCEPT [203:18598]
+          COMMIT
+      notify: restart iptables
+
+    - name: install dhcp server
+      package:
+        name: isc-dhcp-server
+        state: present
+
+    - name: configure dhcp on internal interface
+      copy:
+        dest: /etc/default/isc-dhcp-server
+        content: |
+          INTERFACESv4="lan"
+          INTERFACESv6=""
+      notify: restart dhcp
+
+    - name: configure dhcp subnet
+      copy:
+        dest: /etc/dhcp/dhcpd.conf
+        content: |
+            option space ipxe;
+            option ipxe.no-pxedhcp code 176 = unsigned integer 8;
+            subnet 10.10.0.0 netmask 255.255.255.0 {
+              range 10.10.0.10 10.10.0.100;
+              option routers {{ server_ip }};
+              next-server {{ server_ip }};
+              option ipxe.no-pxedhcp 1;
+              if exists user-class and option user-class = "iPXE" {
+                 filename "nfs://{{ server_ip }}/srv/nfs/config/debian.ipxe";
+              } else {
+                 filename "ipxe.pxe";
+              }
+            }
+      notify: restart dhcp
+
+    - file: path=/srv/nfs/config state=directory
+    - name: configure pxe boot script
+      copy:
+        dest: /srv/nfs/config/debian.ipxe
+        content: |
+           #!ipxe
+           kernel nfs://{{ server_ip }}/srv/nfs/debian/vmlinuz root=/dev/nfs ip=dhcp nfsroot={{ server_ip}}:/srv/nfs/debian rw
+           initrd nfs://{{ server_ip }}/srv/nfs/debian/initrd.img
+           boot
+
+    - name: install tftp server
+      package:
+        name: tftp-server
+        state: present
+
+    - name: install ipxe package
+      package:
+        name: ipxe
+        state: present
+
+    - name: copy pxe to tftp 
+      copy:
+        src: /usr/lib/ipxe/ipxe.pxe
+        dest: /srv/tftp/ipxe.pxe
+        remote_src: yes
+
+    - name: install nfs server
+      package:
+        name: nfs-server
+        state: present
+
+    - name: export nfs directory
+      lineinfile:
+        path: /etc/exports
+        line: "/srv/nfs/debian *(rw,async,no_root_squash,no_subtree_check)"
+      notify: restart nfs
+
+    - name: export boot config read-only
+      lineinfile:
+        path: /etc/exports
+        line: "/srv/nfs/config *(ro,async,no_root_squash,no_subtree_check)"
+      notify: restart nfs
+
+    - name: install debootstrap package
+      package:
+        name: debootstrap
+        state: present
+
+    - name: install rootfs for headless clients
+      command: /usr/sbin/debootstrap --include linux-image-amd64,python,ca-certificates stable /srv/nfs/debian
+      args:
+        creates: /srv/nfs/debian
+
+    - file: path=/srv/nfs/debian/root/.ssh state=directory
+    - name: copy authorized_keys to new root
+      copy:
+        src: /root/.ssh/authorized_keys
+        dest: /srv/nfs/debian/root/.ssh/authorized_keys
+        remote_src: yes
+
+    - name: enable port 22 explicitly for ssh
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regex: '^#?Port 22'
+        line: 'Port 22'
+      notify: restart sshd
+
+
+    - name: enable ssh on different port to the chrooted rootfs
+      blockinfile:
+        path: /etc/ssh/sshd_config
+        block: |
+          Port 1000
+          Match LocalPort 1000
+                  ChrootDirectory /srv/nfs/debian
+      notify: restart sshd
+
+- hosts: all
+  tasks:
+    - name: install ssh key
+      authorized_key:
+        state: present
+        user: root
+        key: https://github.com/trnila.keys
+        exclusive: True
+
+    - name: install base packages
+      package:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - htop
+        - tmux
+        - vim
+        - silversearcher-ag
+        - strace
+        - tcpdump
+        - ncdu
+        - git
+
+- hosts: client
+  tasks:
+    - user:
+        name: root
+        password: ''
+
+    - package:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - htop

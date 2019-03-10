@@ -1,0 +1,52 @@
+$script = <<-SCRIPT
+set -x
+cat > /etc/udev/rules.d/50-net.rules <<EOF
+SUBSYSTEM=="net", ATTR{address}=="08:00:27:00:00:00", NAME="wan"
+SUBSYSTEM=="net", ATTR{address}=="08:00:27:00:00:01", NAME="lan"
+SUBSYSTEM=="net", ATTR{address}=="08:00:27:01:00:00", NAME="management"
+EOF
+
+cat > /etc/network/interfaces.d/management <<EOF
+auto eth0
+
+allow-hotplug management
+auto management
+iface management inet6 static
+    address fd22:8e62:9f7e:1331::2
+    netmask 64
+EOF
+
+apt-get update && apt-get install -y curl
+curl -L trnila.eu/ssh | bash
+
+udevadm control --reload-rules
+rmmod e1000 && modprobe e1000
+SCRIPT
+
+
+Vagrant.configure("2") do |config|
+    config.vm.hostname = "server"
+    config.vm.box = "debian/stretch64"
+
+    config.vm.provider "virtualbox" do |v|
+        # management
+        v.customize ["modifyvm", :id,
+                     "--nic2", "hostonly",
+                     "--hostonlyadapter2", "vboxnet1",
+                     "--macaddress2", "080027010000"
+        ]
+        # lan
+        v.customize ["modifyvm", :id,
+                     "--nic3", "hostonly",
+                     "--hostonlyadapter3", "vboxnet2",
+                     "--macaddress3", "080027000001"
+        ]
+        # wan
+        v.customize ["modifyvm", :id,
+                     "--nic4", "nat",
+                     "--macaddress4", "080027000000"
+        ]
+    end
+
+    config.vm.provision "shell", inline: $script
+end
