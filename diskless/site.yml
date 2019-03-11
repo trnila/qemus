@@ -10,6 +10,8 @@
       service: name=sshd state=restarted
     - name: restart iptables
       service: name=netfilter-persistent state=restarted
+    - name: restart radvd
+      service: name=radvd state=restarted
   tasks:
     - hostname: name=server
 
@@ -26,6 +28,9 @@
           iface lan inet static
             address 10.10.0.1
             netmask 255.255.255.0
+          iface lan inet6 static
+            address fd64::1
+            netmask 64
       notify: restart networking
 
     - name: enable ipv4 forwarding
@@ -33,6 +38,12 @@
         name: net.ipv4.ip_forward
         value: 1
         sysctl_file: /etc/sysctl.d/50-ipv4_forward.conf
+
+    - name: enable ipv6 forwarding
+      sysctl:
+        name: net.ipv6.conf.all.forwarding
+        value: 1
+        sysctl_file: /etc/sysctl.d/50-ipv6_forward.conf
 
     - name: install iptables-persistent
       package:
@@ -55,6 +66,56 @@
           :OUTPUT ACCEPT [203:18598]
           COMMIT
       notify: restart iptables
+
+    - name: copy ipv6 firewall
+      copy:
+        dest: /etc/iptables/rules.v6
+        content: |
+          *nat
+          :PREROUTING ACCEPT [3:302]
+          :INPUT ACCEPT [1:164]
+          :OUTPUT ACCEPT [0:0]
+          :POSTROUTING ACCEPT [2:138]
+          -A POSTROUTING -o management -j MASQUERADE
+          COMMIT
+          *filter
+          :INPUT ACCEPT [306:42468]
+          :FORWARD ACCEPT [84:6696]
+          :OUTPUT ACCEPT [203:18598]
+          COMMIT
+      notify: restart iptables
+
+    - name: install radvd server
+      package:
+        name: radvd
+        state: present
+    - service: name=radvd state=started enabled=true
+
+    - name: configure dhcp on internal interface
+      copy:
+        dest: /etc/default/isc-dhcp-server
+        content: |
+         interface lan {
+           AdvSendAdvert on;
+           MinRtrAdvInterval 3;
+           MaxRtrAdvInterval 10;
+           prefix ::/64 {
+                AdvOnLink on;
+                AdvAutonomous on;
+                AdvRouterAddr on;
+           };
+         };
+      notify: restart radvd
+
+    - name: add default6 route
+      copy:
+        dest: /etc/network/if-up.d/route6 
+        mode: 0700
+        content: |
+          #!/bin/sh
+          ip -6 route add default via fd22:8e62:9f7e:1331::1
+          exit 0
+      notify: restart networking
 
     - name: install dhcp server
       package:
