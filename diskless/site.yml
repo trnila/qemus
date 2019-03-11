@@ -157,7 +157,7 @@
         dest: /srv/nfs/config/debian.ipxe
         content: |
            #!ipxe
-           kernel nfs://{{ server_ip }}/srv/nfs/debian/vmlinuz root=/dev/nfs ip=dhcp nfsroot={{ server_ip}}:/srv/nfs/debian rw
+           kernel nfs://{{ server_ip }}/srv/nfs/debian/vmlinuz root=/dev/nfs ip=dhcp nfsroot={{ server_ip}}:/srv/nfs/debian,udp rw
            initrd nfs://{{ server_ip }}/srv/nfs/debian/initrd.img
            boot
 
