@@ -11,6 +11,8 @@
     - name: restart iptables
       service: name=netfilter-persistent state=restarted
   tasks:
+    - hostname: name=server
+
     - name: configure networking
       copy:
         dest: /etc/network/interfaces.d/network
@@ -77,6 +79,8 @@
               range 10.10.0.10 10.10.0.100;
               option routers {{ server_ip }};
               next-server {{ server_ip }};
+              option domain-name-servers 158.196.0.53;
+
               option ipxe.no-pxedhcp 1;
               if exists user-class and option user-class = "iPXE" {
                  filename "nfs://{{ server_ip }}/srv/nfs/config/debian.ipxe";
@@ -192,8 +196,20 @@
         name: root
         password: ''
 
-    - package:
-        name: "{{ item }}"
+    # dont use hostname command in chroot - it will change host
+    - copy:
+        dest: /etc/hostname
+        content: diskless
+
+    - name: install openssh-server
+      package:
+        name: openssh-server
         state: present
-      with_items:
-        - htop
+
+    - name: configure networking
+      copy:
+        dest: /etc/network/interfaces.d/network
+        content: |
+          allow-hotplug enp0s3
+          auto enp0s3
+          iface enp0s3 inet dhcp
